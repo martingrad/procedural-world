@@ -35,7 +35,7 @@
 		<!-- GUI -->
 		<script type="text/javascript">
 		GuiContent = function() {
-			// this.depth = 1.0;
+			this.reseed = function() { reseedVertices(); };
 		};
 
 		var gui_content;
@@ -45,7 +45,7 @@
 			var gui = new dat.GUI();
 			gui.width = 330;
 			gui.close();
-			// gui.add(gui_content, 'depth', 1, 10);
+			gui.add(gui_content, 'reseed');
 		};
 		</script>
 		
@@ -93,7 +93,7 @@
 			varying vec4 fragWorldPos;
 			varying vec3 interpolatedNormalWorldSpace;
 
-			vec3 lightDirectionWorldSpace = normalize(vec3(-1.0, -1.0, 0.0));
+			vec3 lightDirectionWorldSpace = normalize(vec3(-1.0, -2.0, 0.0));
 			vec3 diffuseLightColor = vec3(1.0, 1.0, 1.0);
 			vec3 diffuseMaterialColor = vec3(1.0, 0.0, 0.0);
 	
@@ -136,8 +136,19 @@
 			var plane_height = 500;
 			var maxHeight = 0.0;
 			var minHeight = 6666;
+			var groundSurface, shaderMaterial;
 
 			init();
+
+			reseedVertices = function()
+			{
+				// Compute new displacement at this new timestep
+				createBaseTerrain(groundSurface.geometry);
+
+				// Mark the mesh for update in order for the changes to take effect
+         		groundSurface.geometry.verticesNeedUpdate = true;
+         		groundSurface.geometry.normalsNeedUpdate = true;
+			};
 
 			function animate()
 			{
@@ -147,7 +158,7 @@
 				render();
 			}
 
-			function vertexDisplacement(point_x, point_y, start)
+			function vertexDisplacement(point_x, point_y, time)
 			{
 				var displacement = 0.0;
 				var freqCount = 5;
@@ -157,68 +168,36 @@
 				// First frequency (ridges)
 				if(freqCount > 0)
 				{
-					displacement +=  (0.5 - Math.abs(noise.perlin3(point_x * noiseFreq, point_y * noiseFreq, start)) ) * noiseAmp;
+					displacement +=  (0.5 - Math.abs(noise.perlin3(point_x * noiseFreq, point_y * noiseFreq, time)) ) * noiseAmp;
 				}
 
 				for(var i = 1; i < freqCount; ++i)
 				{
 					noiseFreq *= 3.5;
 					noiseAmp *= 0.25;
-					displacement += noise.perlin2(point_x * noiseFreq, point_y * noiseFreq) * noiseAmp;
+					displacement += noise.perlin3(point_x * noiseFreq, point_y * noiseFreq, time) * noiseAmp;
 				}
 
 				return displacement;
 			}
 
-			function init()
+			/* 
+			* Function createBaseTerrain creates the base terrain form using
+			* procedural noise as vertex displacement. It also computes new face
+			* normals for use in the shading.
+			*/
+			function createBaseTerrain(geometry)
 			{
-				start = Date.now();
-
-				// Camera
-				camera = new THREE.PerspectiveCamera( 65, window.innerWidth / window.innerHeight, 1, 100000 );
-				camera.position.set(0.0, 100.0, 0.0);
-
-				// Scene
-				scene = new THREE.Scene();
-
-				// Shader uniforms
-				uniforms = {
-					// floats
-					maxElevation: 			{ type: "f", value: maxHeight },
-				    // integers
-				    // vectors
-				    cameraPosWorldSpace: 	{ type: "v3", value: new THREE.Vector3(camera.position.x, camera.position.y, camera.position.z)},
-				    // Textures
-				};
-
-				/* == Ground surface == *
-				*  ==================== */
-
-				// create ground surface material
-				var shaderMaterial = new THREE.ShaderMaterial({
-					uniforms: uniforms,
-					vertexShader:   $('#vertexshader').text(),
-					fragmentShader: $('#fragmentshader').text(),
-					wireframe: false
-				});
-
-				// Create ground surface mesh
-				var geometry = new THREE.PlaneGeometry( plane_width, plane_height, 150, 150);
-				var groundSurface = new THREE.Mesh( geometry, shaderMaterial );
-				groundSurface.rotation.x = -3.1415 / 2.0;
-
-				// Apply procedural noise values to vertex displacement
+				var time = Date.now() - start;				
 				for(var i = 0; i < geometry.vertices.length; ++i)
 				{
 					var point = geometry.vertices[i];
-					var displacement = vertexDisplacement(point.x, point.y, start);
+					var displacement = vertexDisplacement(point.x, point.y, time);
 					geometry.vertices[i].z = displacement;
 
 					maxHeight = (point.z > maxHeight) ? point.z : maxHeight;
 					minHeight = (point.z < minHeight) ? point.z : minHeight;
 				}
-
-				console.log(minHeight);
 
 				// Recalculate face and vertex normals
 				for(var i = 0; i < geometry.faces.length; ++i)
@@ -254,13 +233,48 @@
 					geometry.faces[i].vertexNormals[1] = newNormal;
 					geometry.faces[i].vertexNormals[2] = newNormal;
 				}
+			}
 
-				// Recalculate vertex normals
-				for(var i = 0; i < geometry.vertices.length; ++i)
-				{
-					geometry.vertices[i]
-				}
+			function init()
+			{
+				start = Date.now();
 
+				// Camera
+				camera = new THREE.PerspectiveCamera( 65, window.innerWidth / window.innerHeight, 1, 100000 );
+				camera.position.set(0.0, 100.0, 0.0);
+
+				// Scene
+				scene = new THREE.Scene();
+
+				// Shader uniforms
+				uniforms = {
+					// floats
+					maxElevation: 			{ type: "f", value: maxHeight },
+				    // integers
+				    // vectors
+				    cameraPosWorldSpace: 	{ type: "v3", value: new THREE.Vector3(camera.position.x, camera.position.y, camera.position.z)},
+				    // Textures
+				};
+
+				/* == Ground surface == *
+				*  ==================== */
+
+				// create ground surface material
+				shaderMaterial = new THREE.ShaderMaterial({
+					uniforms: uniforms,
+					vertexShader:   $('#vertexshader').text(),
+					fragmentShader: $('#fragmentshader').text(),
+					wireframe: false
+				});
+
+				// Create ground surface mesh
+				var geometry = new THREE.PlaneGeometry( plane_width, plane_height, 256, 256);
+
+				// Create the base terrain
+				createBaseTerrain(geometry);
+
+				groundSurface = new THREE.Mesh( geometry, shaderMaterial );
+				groundSurface.rotation.x = -3.1415 / 2.0;
 				groundSurface.updateMatrix();
 				groundSurface.matrixAutoUpdate = false;
 				scene.add( groundSurface );
