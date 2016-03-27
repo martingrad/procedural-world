@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>Procedural world generation</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+				color: #000;
+				font-family:Monospace;
+				font-size:13px;
+				text-align:center;
+				font-weight: bold;
+
+				background-color: #fff;
+				margin: 0px;
+				overflow: hidden;
+			}
+
+			#info {
+				color:#000;
+				position: absolute;
+				top: 0px; width: 100%;
+				padding: 5px;
+			}
+
+			a {
+				color: red;
+			}
+		</style>
+
+		<script type="text/javascript" src="js/dat.gui.js"></script>
+		<script type="text/javascript" src="js/noise.js"></script>
+
+		<!-- GUI -->
+		<script type="text/javascript">
+		GuiContent = function() {
+			// this.depth = 1.0;
+		};
+
+		var gui_content;
+
+		window.onload = function() {
+			gui_content = new GuiContent();
+			var gui = new dat.GUI();
+			gui.width = 330;
+			gui.close();
+			// gui.add(gui_content, 'depth', 1, 10);
+		};
+		</script>
+		
+	</head>
+
+	<body>
+		<div id="container"></div>
+
+		<!-- Shaders -->
+		<script type="x-shader/x-vertex" id="vertexshader">
+			// switch on high precision floats
+			#ifdef GL_ES
+			precision highp float;
+			#endif
+			
+			// uniforms
+			uniform vec3 cameraPosWorldSpace;
+			
+			// varyings
+			varying vec3 interpolatedNormalWorldSpace;
+			varying vec4 fragWorldPos;
+						
+			void main()
+			{		
+				gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+
+				// Transformation of 'varyings'
+				interpolatedNormalWorldSpace = normalize(mat3(modelMatrix) * normal);
+				fragWorldPos = modelMatrix * vec4(position, 1.0);
+			}
+			
+		</script>
+		
+		<script type="x-shader/x-fragment" id="fragmentshader">
+			// switch on high precision floats
+			#ifdef GL_ES
+			precision highp float;
+			#endif
+			
+			// uniforms
+			uniform vec3 cameraPosWorldSpace;
+
+			// varyings
+			varying vec4 fragWorldPos;
+			varying vec3 interpolatedNormalWorldSpace;
+	
+			void main()
+			{
+				gl_FragColor = normalize(fragWorldPos);
+			}
+		
+		</script>
+		
+		<!-- End Shaders -->
+		
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+		<script src="js/three.min.js"></script>
+		<script src="js/controls/OrbitControls.js"></script>
+		<script src="js/controls/TrackballControls.js"></script>
+
+		<script src="js/Detector.js"></script>
+		<script src="js/libs/stats.min.js"></script>
+
+		<script>
+
+			if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
+
+			var container;
+			var stats;
+			var start;
+			var camera, controls, scene, renderer;
+			var uniforms;
+			var plane_width  = 500;
+			var plane_height = 500;
+
+			init();
+
+			function animate()
+			{
+				requestAnimationFrame(animate);
+				controls.update();
+
+				render();
+			}
+
+			function init()
+			{
+				start = Date.now();
+
+				// Camera
+				camera = new THREE.PerspectiveCamera( 65, window.innerWidth / window.innerHeight, 1, 100000 );
+				camera.position.set(0.0, 0.0, 1000);
+
+				// Scene
+				scene = new THREE.Scene();
+
+				// Shader uniforms
+				uniforms = {
+					// floats
+				    // integers
+				    // vectors
+				    cameraPosWorldSpace: 	{ type: "v3", value: new THREE.Vector3(camera.position.x, camera.position.y, camera.position.z)},
+				    // Textures
+				};
+
+				/* == Ground surface == *
+				*  ==================== */
+
+				// create ground surface material
+				var shaderMaterial = new THREE.ShaderMaterial({
+					uniforms: uniforms,
+					vertexShader:   $('#vertexshader').text(),
+					fragmentShader: $('#fragmentshader').text(),
+					wireframe: false
+				});
+
+				// Create ground surface mesh
+				var geometry = new THREE.PlaneGeometry( plane_width, plane_height, 256, 256);
+				var groundSurface = new THREE.Mesh( geometry, shaderMaterial );
+				groundSurface.position.x = 0.0;
+				groundSurface.position.y = 0.0;
+				groundSurface.position.z = 0.0;
+
+				// Apply procedural noise values to vertex displacement
+
+				for (var i = 0; i < geometry.vertices.length; i++)
+				{
+					var point = new THREE.Vector3(geometry.vertices[i].x, geometry.vertices[i].y, geometry.vertices[i].z);
+					var value = Math.abs(noise.perlin2(point.x, point.y));
+					geometry.vertices[i].z = value * 100.0;
+				}
+
+
+				groundSurface.updateMatrix();
+				groundSurface.matrixAutoUpdate = false;
+				scene.add( groundSurface );
+
+				// renderer
+				renderer = new THREE.WebGLRenderer( { antialias: false } );
+				renderer.setClearColor( 0x000000 );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+				container = document.getElementById( 'container' );
+				container.appendChild( renderer.domElement );
+
+				// Controls
+				controls = new THREE.TrackballControls( camera, renderer.domElement );
+				controls.rotateSpeed = 0.9;
+				controls.zoomSpeed = 0.5;
+				controls.panSpeed = 0.3;
+
+				stats = new Stats();
+				stats.domElement.style.position = 'absolute';
+				stats.domElement.style.top = '0px';
+				stats.domElement.style.zIndex = 100;
+				container.appendChild( stats.domElement );
+
+				window.addEventListener( 'resize', onWindowResize, false );
+
+				animate();
+			}
+
+			function onWindowResize()
+			{
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+				renderer.setSize( window.innerWidth, window.innerHeight );
+			}
+
+			function render()
+			{
+				uniforms.cameraPosWorldSpace.value = new THREE.Vector3(camera.position.x, camera.position.y, camera.position.z);
+				
+				renderer.render( scene, camera );
+				
+				stats.update();
+			}
+
+		</script>
+
+	</body>
+</html>
