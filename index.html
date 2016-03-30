@@ -130,8 +130,8 @@
 			var start;
 			var camera, controls, scene, renderer;
 			var uniforms;
-			var plane_width  = 500;
-			var plane_height = 500;
+			var plane_width  = 1000;
+			var plane_height = 1000;
 			var maxHeight = 0.0;
 			var minHeight = 6666;
 			var groundSurface, shaderMaterial;
@@ -142,6 +142,7 @@
 			{
 				// Compute new displacement at this new timestep
 				createBaseTerrain(groundSurface.geometry);
+				//createLakes(groundSurface.geometry);
 
 				// Mark the mesh for update in order for the changes to take effect
          		groundSurface.geometry.verticesNeedUpdate = true;
@@ -176,14 +177,14 @@
 			{
 				var displacement = 0.0;
 				var freqCount = 8;
-				var noiseFreq = 0.0025;
+				var noiseFreq = 0.002;
 				var noiseAmp = 150.0;
 
 				// First frequency (ridges)
 				if(freqCount > 0)
 				{
 					// perlin3 returns [-0.5, 0.5]. abs(perlin3) returns [0.0, 0.5].
-					displacement += (0.5 - Math.abs(noise.perlin3(point_x * noiseFreq, point_y * noiseFreq, time)) ) * noiseAmp;
+					displacement += (0.5 - Math.abs(noise.perlin3(point_x * 0.5 * noiseFreq, point_y * noiseFreq, time)) ) * 1.35 * noiseAmp;
 				}
 
 				for(var i = 1; i < freqCount; ++i)
@@ -205,7 +206,9 @@
 			*/
 			function createBaseTerrain(geometry)
 			{
-				var time = Date.now() - start;				
+				var time = Date.now() - start;
+				minHeight = 6666.0;
+				maxHeight = 0.0;
 				for(var i = 0; i < geometry.vertices.length; ++i)
 				{
 					var point = geometry.vertices[i];
@@ -246,9 +249,99 @@
 					geometry.faces[i].normal = newNormal;
 
 					// Add face normal as contribution to each vertex normal
-					geometry.faces[i].vertexNormals[0] = newNormal;
-					geometry.faces[i].vertexNormals[1] = newNormal;
-					geometry.faces[i].vertexNormals[2] = newNormal;
+					//geometry.faces[i].vertexNormals[0] = newNormal;
+					//geometry.faces[i].vertexNormals[1] = newNormal;
+					//geometry.faces[i].vertexNormals[2] = newNormal;
+				}
+
+				// Update vertex normals
+				// Loop through all faces
+				for(var i = 0; i < geometry.faces.length; ++i)
+				{
+					var norm1 = new THREE.Vector3();
+					var norm2 = new THREE.Vector3();
+					var norm3 = new THREE.Vector3();
+					
+					// Loop through all faces connected to first vertex of current face
+					for(var j = 0; j < geometry.vertices[geometry.faces[i].a].faces.length; ++j)
+					{
+						norm1.addVectors(norm1, geometry.faces[geometry.vertices[geometry.faces[i].a].faces[j]].normal);
+					}
+					norm1.divideScalar(norm1.length());
+					geometry.faces[i].vertexNormals[0] = norm1;
+
+					// Loop through all faces connected to second vertex of current face
+					for(var j = 0; j < geometry.vertices[geometry.faces[i].b].faces.length; ++j)
+					{
+						norm2.addVectors(norm2, geometry.faces[geometry.vertices[geometry.faces[i].b].faces[j]].normal);
+					}
+					norm2.divideScalar(norm2.length());
+					geometry.faces[i].vertexNormals[1] = norm2;
+
+					// Loop through all faces connected to third vertex of current face
+					for(var j = 0; j < geometry.vertices[geometry.faces[i].c].faces.length; ++j)
+					{
+						norm3.addVectors(norm3, geometry.faces[geometry.vertices[geometry.faces[i].c].faces[j]].normal);
+					}
+					norm3.divideScalar(norm3.length());
+					geometry.faces[i].vertexNormals[2] = norm3;
+				}
+
+				// Make sure no point is below zero
+				for(var i = 0; i < geometry.vertices.length; ++i)
+				{
+					geometry.vertices[i].z -= minHeight;
+				}
+			}
+
+			/* 
+			* Function createLakes creates lakes
+			*/
+			function createLakes(geometry)
+			{
+				var randInd = Math.floor(Math.random() * (geometry.vertices.length - 1));
+				var lakeStartVert = geometry.vertices[randInd];
+				var lakeHeight = lakeStartVert.z;
+
+				var lakeVertInds = [randInd];
+
+				// Loop through lake vertices
+				for(var i = 0; i < lakeVertInds.length; ++i)
+				{
+					// Loop through connected faces
+					for(var j = 0; j < geometry.vertices[i].faces.length; ++j)
+					{
+						if( geometry.vertices[geometry.faces[i].a].z < lakeHeight ) lakeVertInds.push(geometry.faces[i].a);
+						if( geometry.vertices[geometry.faces[i].b].z < lakeHeight ) lakeVertInds.push(geometry.faces[i].b);
+						if( geometry.vertices[geometry.faces[i].c].z < lakeHeight ) lakeVertInds.push(geometry.faces[i].c);
+					}
+
+					if( geometry.vertices[lakeVertInds[i]].z < lakeHeight )
+					{
+						lakeVertInds.push(geometry.faces[i].a);
+					}
+
+				}
+			}
+
+			function addVertexConnectivity(geometry)
+			{
+				// Add "faces" property to geometry object
+				for(var i = 0; i < geometry.vertices.length; ++i)
+				{
+					geometry.vertices[i]["faces"] = [];
+				}
+
+				// Add the index of each face to each of its vertices
+				for(var i = 0; i < geometry.faces.length; ++i)
+				{
+					var vertInd_0 = geometry.faces[i].a;
+					var vertInd_1 = geometry.faces[i].b;
+					var vertInd_2 = geometry.faces[i].c;
+
+					geometry.vertices[vertInd_0].faces.push(i);
+					geometry.vertices[vertInd_1].faces.push(i);
+					geometry.vertices[vertInd_2].faces.push(i);
 				}
 			}
 
@@ -258,7 +351,6 @@
 
 				// Camera
 				camera = new THREE.PerspectiveCamera( 65, window.innerWidth / window.innerHeight, 1, 100000 );
-				camera.position.set(0.0, 100.0, 0.0);
 
 				// Scene
 				scene = new THREE.Scene();
@@ -287,8 +379,12 @@
 				// Create ground surface mesh
 				var geometry = new THREE.PlaneGeometry( plane_width, plane_height, 256, 256);
 
+				// Extend geometry with face-vertex connectivity
+				addVertexConnectivity(geometry);
+
 				// Create the base terrain
 				createBaseTerrain(geometry);
+				//createLakes(geometry);
 
 				groundSurface = new THREE.Mesh( geometry, shaderMaterial );
 				groundSurface.rotation.x = -3.1415 / 2.0;
@@ -297,7 +393,7 @@
 				scene.add( groundSurface );
 
 				var zeroGeometry = new THREE.PlaneGeometry( plane_width, plane_height, 1, 1);
-				var zeroPlane = new THREE.Mesh( zeroGeometry, shaderMaterial );
+				var zeroPlane = new THREE.Mesh( zeroGeometry, new THREE.MeshBasicMaterial( {color: 000077} ) );
 				zeroPlane.rotation.x = -3.1415 / 2.0;
 				zeroPlane.updateMatrix();
 				zeroPlane.matrixAutoUpdate = false;
@@ -318,7 +414,7 @@
 				controls.zoomSpeed = 0.4;
 				controls.panSpeed = 0.1;
 
-				camera.position.set(0.0, 250.0, 500.0);
+				camera.position.set(750.0, 500.0, 750.0);
 
 				stats = new Stats();
 				stats.domElement.style.position = 'absolute';
