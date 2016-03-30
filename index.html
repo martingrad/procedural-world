@@ -105,7 +105,7 @@
 				vec3 forestColor = vec3(0.5, 0.8, 0.3) * 0.5;
 				vec3 mountainColor = vec3(0.9, 0.8, 0.7);
 
-				vec3 groundColor = mix(forestColor, mountainColor, abs(fragWorldPos.y / maxElevation));
+				vec3 groundColor = mix(forestColor, mountainColor, max(0.0, (fragWorldPos.y / maxElevation)) );
 				gl_FragColor = vec4(diffuseLighting * groundColor, 1.0);
 			}
 		
@@ -138,7 +138,7 @@
 
 			init();
 
-			reseedVertices = function()
+			function reseedVertices()
 			{
 				// Compute new displacement at this new timestep
 				createBaseTerrain(groundSurface.geometry);
@@ -156,17 +156,34 @@
 				render();
 			}
 
+			function clamp(a,b,c)
+			{
+				return Math.max(b,Math.min(c,a));
+			}
+
+			function smoothstep(edge0, edge1, x)
+			{
+				var t;
+    			t = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+
+    			var smooth = t * t * (3.0 - 2.0 * t);
+    			if(x == 0.0) console.log("smoothstepping " + x + " between " + edge0 + " and " + edge1 + " yields: " + smooth);
+
+    			return smooth;
+			}
+
 			function vertexDisplacement(point_x, point_y, time)
 			{
 				var displacement = 0.0;
-				var freqCount = 5;
+				var freqCount = 8;
 				var noiseFreq = 0.0025;
 				var noiseAmp = 150.0;
 
 				// First frequency (ridges)
 				if(freqCount > 0)
 				{
-					displacement +=  (0.5 - Math.abs(noise.perlin3(point_x * noiseFreq, point_y * noiseFreq, time)) ) * noiseAmp;
+					// perlin3 returns [-0.5, 0.5]. abs(perlin3) returns [0.0, 0.5].
+					displacement += (0.5 - Math.abs(noise.perlin3(point_x * noiseFreq, point_y * noiseFreq, time)) ) * noiseAmp;
 				}
 
 				for(var i = 1; i < freqCount; ++i)
@@ -176,6 +193,8 @@
 					displacement += noise.perlin3(point_x * noiseFreq, point_y * noiseFreq, time) * noiseAmp;
 				}
 
+				//if(displacement < 0.0) displacement = 0.0;
+				//if(displacement < 1.0) displacement = smoothstep(0.0, 1.0, displacement / 10.0) * 10.0;
 				return displacement;
 			}
 
@@ -277,12 +296,12 @@
 				groundSurface.matrixAutoUpdate = false;
 				scene.add( groundSurface );
 
-				var geometry2 = new THREE.PlaneGeometry( plane_width, plane_height, 1, 1);
-				var groundSurface2 = new THREE.Mesh( geometry2, shaderMaterial );
-				groundSurface2.rotation.x = -3.1415 / 2.0;
-				groundSurface2.updateMatrix();
-				groundSurface2.matrixAutoUpdate = false;
-				//scene.add( groundSurface2 );
+				var zeroGeometry = new THREE.PlaneGeometry( plane_width, plane_height, 1, 1);
+				var zeroPlane = new THREE.Mesh( zeroGeometry, shaderMaterial );
+				zeroPlane.rotation.x = -3.1415 / 2.0;
+				zeroPlane.updateMatrix();
+				zeroPlane.matrixAutoUpdate = false;
+				scene.add( zeroPlane );
 
 				// renderer
 				renderer = new THREE.WebGLRenderer( { antialias: false } );
