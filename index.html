@@ -113,7 +113,7 @@
 		
 		<!-- End Shaders -->
 		
-		<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+		<script src="js/jquery.min.js"></script>
 		<script src="js/three.min.js"></script>
 		<script src="js/controls/OrbitControls.js"></script>
 		<script src="js/controls/TrackballControls.js"></script>
@@ -135,6 +135,7 @@
 			var maxHeight = 0.0;
 			var minHeight = 6666;
 			var groundSurface, shaderMaterial;
+			var terrainGroup;
 
 			init();
 
@@ -142,7 +143,7 @@
 			{
 				// Compute new displacement at this new timestep
 				createBaseTerrain(groundSurface.geometry);
-				//createLakes(groundSurface.geometry);
+				createLakes(groundSurface.geometry);
 
 				// Mark the mesh for update in order for the changes to take effect
          		groundSurface.geometry.verticesNeedUpdate = true;
@@ -194,8 +195,8 @@
 					displacement += noise.perlin3(point_x * noiseFreq, point_y * noiseFreq, time) * noiseAmp;
 				}
 
-				//if(displacement < 0.0) displacement = 0.0;
-				//if(displacement < 1.0) displacement = smoothstep(0.0, 1.0, displacement / 10.0) * 10.0;
+				// if(displacement < 0.0) displacement = 0.0;
+				// if(displacement < 1.0) displacement = smoothstep(0.0, 1.0, displacement / 10.0) * 10.0;
 				return displacement;
 			}
 
@@ -299,29 +300,103 @@
 			*/
 			function createLakes(geometry)
 			{
-				var randInd = Math.floor(Math.random() * (geometry.vertices.length - 1));
-				var lakeStartVert = geometry.vertices[randInd];
-				var lakeHeight = lakeStartVert.z;
+				// var randInd = Math.floor(Math.random() * (geometry.vertices.length - 1));
+				// var lakeStartVert = geometry.vertices[randInd];
+				// var lakeHeight = lakeStartVert.z;
 
-				var lakeVertInds = [randInd];
+				// Declare array containing starting point, to add additional lake vertices to
+				// var lakeVertInds = [randInd];
 
-				// Loop through lake vertices
-				for(var i = 0; i < lakeVertInds.length; ++i)
+				// // Loop through lake vertices
+				// for(var i = 0; i < lakeVertInds.length; ++i)
+				// {
+				// 	// Loop through connected faces
+				// 	for(var j = 0; j < geometry.vertices[i].faces.length; ++j)
+				// 	{
+				// 		if( geometry.vertices[geometry.faces[i].a].z < lakeHeight ) lakeVertInds.push(geometry.faces[i].a);
+				// 		if( geometry.vertices[geometry.faces[i].b].z < lakeHeight ) lakeVertInds.push(geometry.faces[i].b);
+				// 		if( geometry.vertices[geometry.faces[i].c].z < lakeHeight ) lakeVertInds.push(geometry.faces[i].c);
+				// 	}
+
+				// 	if( geometry.vertices[lakeVertInds[i]].z < lakeHeight )
+				// 	{
+				// 		lakeVertInds.push(geometry.faces[i].a);
+				// 	}
+
+				// }
+
+				/*
+				// Find suitabke places for lakes
+				
+				// Array for suitable points
+				var lakeSeedPoints = [];
+
+				// Loop through all points
+				for(var v_ind = 0; v_ind < geometry.vertices.length; ++v_ind)
 				{
-					// Loop through connected faces
-					for(var j = 0; j < geometry.vertices[i].faces.length; ++j)
+					// Loop through the neighboring faces of each point
+					for(var i = 0; i < geometry.vertices[v_ind].faces.length; ++i)
 					{
-						if( geometry.vertices[geometry.faces[i].a].z < lakeHeight ) lakeVertInds.push(geometry.faces[i].a);
-						if( geometry.vertices[geometry.faces[i].b].z < lakeHeight ) lakeVertInds.push(geometry.faces[i].b);
-						if( geometry.vertices[geometry.faces[i].c].z < lakeHeight ) lakeVertInds.push(geometry.faces[i].c);
-					}
+						var neighborFaceIndex = geometry.vertices[v_ind].faces[i];
 
-					if( geometry.vertices[lakeVertInds[i]].z < lakeHeight )
-					{
-						lakeVertInds.push(geometry.faces[i].a);
+						// Loop through all points on each neighboring face
+						for(var j = 0; j < 3; ++j)
+						{
+							var v0 = geometry.faces[neighborFaceIndex].a;
+							var v1 = geometry.faces[neighborFaceIndex].b;
+							var v2 = geometry.faces[neighborFaceIndex].c;
+						}
 					}
-
 				}
+				*/
+
+				// First, create river seed points
+
+				var numberOfRivers = 20;
+				var riverSeedPoints = [];
+				for(var i = 0; i < numberOfRivers; ++i)
+				{
+					// Generate a random point on the gepmetry and
+					// make sure that the point is high enough
+					var randInd;
+					do
+					{
+						randInd = Math.floor(Math.random() * (geometry.vertices.length - 1));
+					} while(geometry.vertices[randInd].z <= 100.0);
+					riverSeedPoints.push(randInd);
+				}
+
+				for(var i = 0; i < riverSeedPoints.length; ++i)
+				{
+					console.log(geometry.vertices[riverSeedPoints[i]].x);
+					console.log(geometry.vertices[riverSeedPoints[i]].y);
+					console.log(geometry.vertices[riverSeedPoints[i]].z);
+				}
+				
+				// Create river paths using A* to find shortest/easiest path to the ocean
+				// from these points
+
+
+				var seedSpheres = [];
+				// Add 3D geometry to represent seed points
+				for(var i = 0; i < numberOfRivers; ++i)
+				{
+					var seedSphere = new THREE.SphereGeometry( 5, 32, 32 );
+					var seedSphereMaterial = new THREE.MeshBasicMaterial( {color: 0xff0000} );
+					var seedSphere = new THREE.Mesh(seedSphere, seedSphereMaterial);
+					seedSphere.position.x = geometry.vertices[riverSeedPoints[i]].x;
+					seedSphere.position.y = geometry.vertices[riverSeedPoints[i]].y;
+					seedSphere.position.z = geometry.vertices[riverSeedPoints[i]].z;
+
+					terrainGroup.add(seedSphere);
+					seedSpheres.push(seedSphere);
+				}
+
+				for(var i = 0; i < seedSpheres.length; ++i)
+				{
+					console.log(seedSpheres[i].position);
+				}
+
 			}
 
 			function addVertexConnectivity(geometry)
@@ -355,6 +430,9 @@
 				// Scene
 				scene = new THREE.Scene();
 
+				// Terrain group
+				terrainGroup = new THREE.Object3D(); // Create an empty container for terrain objects
+
 				// Shader uniforms
 				uniforms = {
 					// floats
@@ -384,17 +462,20 @@
 
 				// Create the base terrain
 				createBaseTerrain(geometry);
-				//createLakes(geometry);
+				createLakes(geometry);
 
 				groundSurface = new THREE.Mesh( geometry, shaderMaterial );
-				groundSurface.rotation.x = -3.1415 / 2.0;
+				//groundSurface.rotation.x = -3.1415 / 2.0;
 				groundSurface.updateMatrix();
 				groundSurface.matrixAutoUpdate = false;
-				scene.add( groundSurface );
+				terrainGroup.add(groundSurface);
+				terrainGroup.rotation.x = -3.1415 / 2.0;
+				scene.add( terrainGroup );
 
 				var zeroGeometry = new THREE.PlaneGeometry( plane_width, plane_height, 1, 1);
 				var zeroPlane = new THREE.Mesh( zeroGeometry, new THREE.MeshBasicMaterial( {color: 000077} ) );
 				zeroPlane.rotation.x = -3.1415 / 2.0;
+				zeroPlane.position.y = 50.0;
 				zeroPlane.updateMatrix();
 				zeroPlane.matrixAutoUpdate = false;
 				scene.add( zeroPlane );
